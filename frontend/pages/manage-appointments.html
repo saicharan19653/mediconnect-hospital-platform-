@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Appointments — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="margin-bottom:28px">
+      <h2>Manage Appointments</h2>
+      <p>View and update all patient appointments</p>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="grid-4" style="margin-bottom:28px">
+      <div class="stat-card"><div class="stat-icon orange">⏳</div><div><div class="stat-value" id="count-pending">—</div><div class="stat-label">Pending</div></div></div>
+      <div class="stat-card"><div class="stat-icon blue">✅</div><div><div class="stat-value" id="count-confirmed">—</div><div class="stat-label">Confirmed</div></div></div>
+      <div class="stat-card"><div class="stat-icon green">🏁</div><div><div class="stat-value" id="count-completed">—</div><div class="stat-label">Completed</div></div></div>
+      <div class="stat-card"><div class="stat-icon red">❌</div><div><div class="stat-value" id="count-cancelled">—</div><div class="stat-label">Cancelled</div></div></div>
+    </div>
+
+    <!-- Filter & Table -->
+    <div class="card">
+      <div class="card-header" style="flex-wrap:wrap;gap:12px">
+        <h3 style="font-size:1.1rem">All Appointments</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="filter-status" class="form-control" style="width:auto;padding:6px 28px 6px 10px;font-size:13px" onchange="loadAppointments()">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div id="appointments-table"><div class="spinner"></div></div>
+        <div id="pagination" class="pagination" style="padding:16px;justify-content:center"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  Auth.requireAdmin();
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('📅 Appointments');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Appointments', 'admin');
+
+  const limit = 15;
+  let currentPage = 0;
+
+  async function loadStats() {
+    const statuses = ['pending', 'confirmed', 'completed', 'cancelled'];
+    for (const s of statuses) {
+      try {
+        const res = await Api.getAppointments({ status: s, limit: 1 });
+        document.getElementById(`count-${s}`).textContent = res.total;
+      } catch {}
+    }
+  }
+
+  async function loadAppointments(page = 0) {
+    currentPage = page;
+    const status = document.getElementById('filter-status').value;
+    const container = document.getElementById('appointments-table');
+    container.innerHTML = '<div style="text-align:center"><div class="spinner"></div></div>';
+
+    try {
+      const params = { limit, skip: page * limit };
+      if (status) params.status = status;
+      const res = await Api.getAppointments(params);
+
+      if (!res.appointments.length) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">📅</div><h3>No appointments found</h3></div>`;
+        document.getElementById('pagination').innerHTML = '';
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Patient</th><th>Doctor</th><th>Hospital</th>
+                <th>Date & Time</th><th>Notes</th><th>Status</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${res.appointments.map(a => `
+                <tr>
+                  <td>
+                    <strong>${a.patient_name}</strong>
+                    <div class="text-sm text-muted">${a.patient_email}</div>
+                  </td>
+                  <td>
+                    <strong>Dr. ${a.doctor_name}</strong>
+                    <div class="text-sm text-muted">${a.specialization}</div>
+                  </td>
+                  <td>${a.hospital_name}</td>
+                  <td>
+                    <strong>${UI.formatDate(a.date)}</strong>
+                    <div class="text-sm text-muted">${a.time}</div>
+                  </td>
+                  <td class="text-sm text-muted">${UI.truncate(a.notes, 40) || '—'}</td>
+                  <td>${UI.getStatusBadge(a.status)}</td>
+                  <td>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap">
+                      ${a.status === 'pending' ? `
+                        <button class="btn btn-sm btn-success" onclick="update('${a.id}','confirmed')">✓ Confirm</button>
+                        <button class="btn btn-sm btn-danger" onclick="update('${a.id}','cancelled')">✕ Cancel</button>
+                      ` : ''}
+                      ${a.status === 'confirmed' ? `
+                        <button class="btn btn-sm btn-primary" onclick="update('${a.id}','completed')">✓ Done</button>
+                        <button class="btn btn-sm btn-danger" onclick="update('${a.id}','cancelled')">✕ Cancel</button>
+                      ` : ''}
+                      ${a.status === 'completed' || a.status === 'cancelled' ? '—' : ''}
+                    </div>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+      const pages = Math.ceil(res.total / limit);
+      const pag = document.getElementById('pagination');
+      pag.innerHTML = pages > 1 ? Array.from({length: Math.min(pages, 10)}, (_, i) =>
+        `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadAppointments(${i})">${i + 1}</button>`
+      ).join('') : '';
+    } catch (err) {
+      container.innerHTML = `<div class="alert alert-danger" style="margin:16px">Error: ${err.message}</div>`;
+    }
+  }
+
+  async function update(id, status) {
+    try {
+      await Api.updateAppointmentStatus(id, status);
+      Toast.success(`Appointment ${status}`);
+      loadAppointments(currentPage);
+      loadStats();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  loadStats();
+  loadAppointments();
+</script>
+</body>
+</html>

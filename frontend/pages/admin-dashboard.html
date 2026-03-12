@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="margin-bottom:28px">
+      <h2>Admin Dashboard</h2>
+      <p>Platform overview and management</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid-4" style="margin-bottom:32px">
+      <div class="stat-card">
+        <div class="stat-icon teal">🏥</div>
+        <div><div class="stat-value" id="stat-hospitals">—</div><div class="stat-label">Total Hospitals</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon blue">👨‍⚕️</div>
+        <div><div class="stat-value" id="stat-doctors">—</div><div class="stat-label">Total Doctors</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon orange">📅</div>
+        <div><div class="stat-value" id="stat-appointments">—</div><div class="stat-label">Appointments</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon red">🩸</div>
+        <div><div class="stat-value" id="stat-donors">—</div><div class="stat-label">Blood Donors</div></div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="margin-bottom:32px">
+      <h3 style="margin-bottom:16px">Quick Actions</h3>
+      <div class="grid-3">
+        <a href="add-hospital.html" class="card" style="padding:20px;text-align:center;text-decoration:none">
+          <div style="font-size:36px;margin-bottom:8px">🏥</div>
+          <h4>Add Hospital</h4><p class="text-sm text-muted mt-1">Register new hospital</p>
+        </a>
+        <a href="add-doctor.html" class="card" style="padding:20px;text-align:center;text-decoration:none">
+          <div style="font-size:36px;margin-bottom:8px">👨‍⚕️</div>
+          <h4>Add Doctor</h4><p class="text-sm text-muted mt-1">Add a new specialist</p>
+        </a>
+        <a href="manage-appointments.html" class="card" style="padding:20px;text-align:center;text-decoration:none">
+          <div style="font-size:36px;margin-bottom:8px">📋</div>
+          <h4>View Appointments</h4><p class="text-sm text-muted mt-1">Manage all bookings</p>
+        </a>
+      </div>
+    </div>
+
+    <!-- Hospitals Table -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-header">
+        <h3 style="font-size:1.1rem">Hospitals</h3>
+        <a href="add-hospital.html" class="btn btn-sm btn-primary">+ Add Hospital</a>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div id="hospitals-table"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Recent Appointments -->
+    <div class="card">
+      <div class="card-header">
+        <h3 style="font-size:1.1rem">Recent Appointments</h3>
+        <a href="manage-appointments.html" class="btn btn-sm btn-secondary">View All</a>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div id="appointments-table"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Edit Hospital Modal -->
+<div id="edit-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Hospital</h3>
+      <button class="modal-close" onclick="document.getElementById('edit-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+      <div class="form-group"><label class="form-label">Hospital Name</label><input id="edit-name" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Location</label><input id="edit-location" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Address</label><input id="edit-address" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Total Beds</label><input type="number" id="edit-beds" class="form-control"></div>
+      <div class="form-group" style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" id="edit-emergency" style="width:16px;height:16px">
+        <label for="edit-emergency">Emergency Available</label>
+      </div>
+      <button class="btn btn-primary w-full" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Crowd Monitor Modal -->
+<div id="crowd-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Update Crowd Data</h3>
+      <button class="modal-close" onclick="document.getElementById('crowd-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="crowd-hospital-id">
+      <div class="form-group"><label class="form-label">Current Waiting Patients</label><input type="number" id="crowd-waiting" class="form-control" min="0"></div>
+      <div class="form-group"><label class="form-label">Estimated Wait (minutes)</label><input type="number" id="crowd-wait-min" class="form-control" min="0"></div>
+      <div class="form-group"><label class="form-label">Bed Occupancy %</label><input type="number" id="crowd-occupancy" class="form-control" min="0" max="100"></div>
+      <button class="btn btn-primary w-full" onclick="saveCrowd()">Update</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  Auth.requireAdmin();
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('📊 Dashboard');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Dashboard', 'admin');
+
+  async function loadStats() {
+    const [h, d, a, b] = await Promise.allSettled([
+      Api.getHospitals({ limit: 1 }), Api.getDoctors({ limit: 1 }),
+      Api.getAppointments({ limit: 1 }), Api.getDonors({ limit: 1 })
+    ]);
+    if (h.status === 'fulfilled') document.getElementById('stat-hospitals').textContent = h.value.total;
+    if (d.status === 'fulfilled') document.getElementById('stat-doctors').textContent = d.value.total;
+    if (a.status === 'fulfilled') document.getElementById('stat-appointments').textContent = a.value.total;
+    if (b.status === 'fulfilled') document.getElementById('stat-donors').textContent = b.value.total;
+  }
+
+  async function loadHospitals() {
+    const container = document.getElementById('hospitals-table');
+    try {
+      const res = await Api.getHospitals({ limit: 10 });
+      if (!res.hospitals.length) {
+        container.innerHTML = `<div class="empty-state"><p>No hospitals yet. <a href="add-hospital.html">Add one</a></p></div>`;
+        return;
+      }
+      container.innerHTML = `
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Name</th><th>Location</th><th>Beds</th><th>Emergency</th><th>Crowd Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              ${res.hospitals.map(h => `
+                <tr>
+                  <td><strong>${h.hospital_name}</strong></td>
+                  <td>${h.location_display || h.location}</td>
+                  <td>${h.total_beds}</td>
+                  <td>${h.emergency_available ? '<span class="status-badge status-confirmed">Yes</span>' : '—'}</td>
+                  <td>
+                    <span style="font-size:12px">👥 ${h.crowd_data?.current_waiting || 0} waiting · ${h.crowd_data?.occupancy_percent || 0}% full</span>
+                  </td>
+                  <td style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn btn-sm btn-secondary" onclick="openEdit('${h.id}','${h.hospital_name}','${h.location}','${h.address}',${h.total_beds},${h.emergency_available})">✏️</button>
+                    <button class="btn btn-sm btn-secondary" onclick="openCrowd('${h.id}',${h.crowd_data?.current_waiting||0},${h.crowd_data?.estimated_wait_minutes||15},${h.crowd_data?.occupancy_percent||0})">📊</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteHospital('${h.id}','${h.hospital_name}')">🗑</button>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (err) { container.innerHTML = `<div class="alert alert-danger" style="margin:16px">Error: ${err.message}</div>`; }
+  }
+
+  async function loadRecentAppointments() {
+    const container = document.getElementById('appointments-table');
+    try {
+      const res = await Api.getAppointments({ limit: 8 });
+      if (!res.appointments.length) {
+        container.innerHTML = `<div class="empty-state"><p>No appointments yet.</p></div>`; return;
+      }
+      container.innerHTML = `
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Patient</th><th>Doctor</th><th>Hospital</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              ${res.appointments.map(a => `
+                <tr>
+                  <td>${a.patient_name}</td>
+                  <td>Dr. ${a.doctor_name}<div class="text-sm text-muted">${a.specialization}</div></td>
+                  <td>${a.hospital_name}</td>
+                  <td>${UI.formatDate(a.date)} · ${a.time}</td>
+                  <td>${UI.getStatusBadge(a.status)}</td>
+                  <td>
+                    ${a.status === 'pending' ? `<button class="btn btn-sm btn-success" onclick="updateStatus('${a.id}','confirmed')">Confirm</button>` : ''}
+                    ${a.status === 'confirmed' ? `<button class="btn btn-sm btn-primary" onclick="updateStatus('${a.id}','completed')">Complete</button>` : ''}
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (err) { container.innerHTML = `<div class="alert alert-danger" style="margin:16px">Error: ${err.message}</div>`; }
+  }
+
+  function openEdit(id, name, location, address, beds, emergency) {
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-name').value = name;
+    document.getElementById('edit-location').value = location;
+    document.getElementById('edit-address').value = address;
+    document.getElementById('edit-beds').value = beds;
+    document.getElementById('edit-emergency').checked = emergency;
+    document.getElementById('edit-modal').classList.remove('hidden');
+  }
+
+  async function saveEdit() {
+    const id = document.getElementById('edit-id').value;
+    try {
+      await Api.updateHospital(id, {
+        hospital_name: document.getElementById('edit-name').value,
+        location: document.getElementById('edit-location').value,
+        address: document.getElementById('edit-address').value,
+        total_beds: parseInt(document.getElementById('edit-beds').value),
+        emergency_available: document.getElementById('edit-emergency').checked,
+      });
+      Toast.success('Hospital updated!');
+      document.getElementById('edit-modal').classList.add('hidden');
+      loadHospitals();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  function openCrowd(id, waiting, waitMin, occupancy) {
+    document.getElementById('crowd-hospital-id').value = id;
+    document.getElementById('crowd-waiting').value = waiting;
+    document.getElementById('crowd-wait-min').value = waitMin;
+    document.getElementById('crowd-occupancy').value = occupancy;
+    document.getElementById('crowd-modal').classList.remove('hidden');
+  }
+
+  async function saveCrowd() {
+    const id = document.getElementById('crowd-hospital-id').value;
+    try {
+      await Api.updateCrowd(id, {
+        current_waiting: parseInt(document.getElementById('crowd-waiting').value),
+        estimated_wait_minutes: parseInt(document.getElementById('crowd-wait-min').value),
+        occupancy_percent: parseInt(document.getElementById('crowd-occupancy').value),
+      });
+      Toast.success('Crowd data updated!');
+      document.getElementById('crowd-modal').classList.add('hidden');
+      loadHospitals();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  async function deleteHospital(id, name) {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await Api.deleteHospital(id);
+      Toast.success('Hospital deleted');
+      loadHospitals(); loadStats();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  async function updateStatus(id, status) {
+    try {
+      await Api.updateAppointmentStatus(id, status);
+      Toast.success(`Appointment ${status}`);
+      loadRecentAppointments();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  loadStats();
+  loadHospitals();
+  loadRecentAppointments();
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-hero">
+    <div class="auth-hero-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:40px">
+        <div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px">✚</div>
+        <span style="font-family:var(--font-display);font-size:1.8rem;color:white">MediConnect</span>
+      </div>
+      <h1>Your health, our priority.</h1>
+      <p>Access the complete hospital services platform. Find doctors, book appointments, and manage your health journey.</p>
+      <ul class="feature-list">
+        <li><span class="check">✓</span>Search hospitals by location</li>
+        <li><span class="check">✓</span>Book OP appointments instantly</li>
+        <li><span class="check">✓</span>Real-time crowd monitoring</li>
+        <li><span class="check">✓</span>Blood donor registry</li>
+      </ul>
+    </div>
+  </div>
+  <div class="auth-form-side">
+    <div class="auth-card">
+      <h2>Welcome back</h2>
+      <p>Sign in to your MediConnect account</p>
+      <div id="error-msg" class="hidden" style="margin-top:16px"></div>
+      <form id="login-form" style="margin-top:28px" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label class="form-label">Email address</label>
+          <div class="input-group">
+            <span class="input-icon">✉</span>
+            <input type="email" id="email" class="form-control" placeholder="you@example.com" required autocomplete="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <div class="input-group">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="password" class="form-control" placeholder="Your password" required autocomplete="current-password">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gray-600);cursor:pointer">
+            <input type="checkbox" id="remember"> Remember me
+          </label>
+        </div>
+        <button type="submit" id="login-btn" class="btn btn-primary btn-lg w-full">Sign In</button>
+      </form>
+      <hr class="auth-divider">
+      <p style="text-align:center;font-size:14px;color:var(--gray-500)">
+        Don't have an account? <a href="register.html" style="font-weight:600">Create account</a>
+      </p>
+      <div style="margin-top:16px;padding:14px;background:var(--gray-100);border-radius:var(--radius-sm)">
+        <p style="font-size:12px;color:var(--gray-500);text-align:center;margin-bottom:8px;font-weight:600">DEMO CREDENTIALS</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <button class="btn btn-sm btn-secondary" onclick="fillDemo('admin@mediconnect.com','Admin@123')">👑 Admin Login</button>
+          <button class="btn btn-sm btn-secondary" onclick="fillDemo('patient@mediconnect.com','Patient@123')">👤 Patient Login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="../js/api.js"></script>
+<script>
+  // Redirect if already logged in
+  if (Auth.isLoggedIn()) {
+    window.location.href = Auth.isAdmin() ? 'admin-dashboard.html' : 'patient-dashboard.html';
+  }
+
+  function fillDemo(email, password) {
+    document.getElementById('email').value = email;
+    document.getElementById('password').value = password;
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    UI.hideError('error-msg');
+    UI.setLoading(btn, true, ' Signing in...');
+    try {
+      const res = await Api.login({ email, password });
+      Auth.setSession(res.token, res.user);
+      Toast.success(`Welcome back, ${res.user.name}!`);
+      setTimeout(() => {
+        window.location.href = res.user.role === 'admin' ? 'admin-dashboard.html' : 'patient-dashboard.html';
+      }, 500);
+    } catch (err) {
+      UI.showError('error-msg', err.message || 'Login failed. Please try again.');
+      UI.setLoading(btn, false, 'Sign In');
+    }
+  }
+</script>
+</body>
+</html>

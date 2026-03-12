@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Doctor — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="max-width:700px">
+      <h2>Add New Doctor</h2>
+      <p style="margin-bottom:28px">Register a doctor and assign them to a hospital</p>
+
+      <div class="card">
+        <div class="card-header"><h3 style="font-size:1.1rem">Doctor Information</h3></div>
+        <div class="card-body">
+          <div id="error-msg" class="hidden" style="margin-bottom:16px"></div>
+          <div id="success-msg" class="hidden" style="margin-bottom:16px"></div>
+
+          <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" id="doctor-name" class="form-control" placeholder="e.g. Rajesh Kumar" required>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Specialization *</label>
+              <input type="text" id="specialization" class="form-control" list="spec-list" placeholder="e.g. Cardiologist" required>
+              <datalist id="spec-list">
+                <option>Cardiologist</option><option>Neurologist</option><option>Orthopedic Surgeon</option>
+                <option>Pediatrician</option><option>Oncologist</option><option>Dermatologist</option>
+                <option>Gynecologist</option><option>Radiologist</option><option>Gastroenterologist</option>
+                <option>Ophthalmologist</option><option>ENT Specialist</option><option>Psychiatrist</option>
+                <option>General Physician</option><option>Emergency Medicine</option>
+              </datalist>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Experience (years) *</label>
+              <input type="number" id="experience" class="form-control" placeholder="10" min="0" max="60" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assigned Hospital *</label>
+            <select id="hospital-id" class="form-control" required>
+              <option value="">— Loading hospitals... —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Qualification</label>
+            <input type="text" id="qualification" class="form-control" placeholder="MBBS, MD, DM — Cardiology, AIIMS Delhi">
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Schedule</label>
+              <input type="text" id="schedule" class="form-control" placeholder="Mon-Sat 9AM-5PM" value="Mon-Sat 9AM-5PM">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Consultation Fee (₹)</label>
+              <input type="number" id="fee" class="form-control" placeholder="500" min="0">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Bio (optional)</label>
+            <textarea id="bio" class="form-control" placeholder="Brief professional summary..." rows="3"></textarea>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="availability" checked style="width:16px;height:16px">
+            <label for="availability" style="font-size:14px;cursor:pointer;font-weight:500">✅ Currently Available for Appointments</label>
+          </div>
+
+          <div style="display:flex;gap:12px;margin-top:8px">
+            <button id="add-btn" class="btn btn-primary btn-lg" onclick="addDoctor()" style="flex:1">👨‍⚕️ Add Doctor</button>
+            <a href="admin-dashboard.html" class="btn btn-secondary btn-lg">Cancel</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Doctors Table -->
+      <div class="card" style="margin-top:32px">
+        <div class="card-header"><h3 style="font-size:1.1rem">Registered Doctors</h3></div>
+        <div class="card-body" style="padding:0">
+          <div id="doctors-table"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  Auth.requireAdmin();
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('👨‍⚕️ Add Doctor');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Add Doctor', 'admin');
+
+  async function loadHospitals() {
+    try {
+      const res = await Api.getHospitals({ limit: 100 });
+      const sel = document.getElementById('hospital-id');
+      sel.innerHTML = '<option value="">— Select hospital —</option>';
+      res.hospitals.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h.id; opt.textContent = `${h.hospital_name} (${h.location_display || h.location})`;
+        sel.appendChild(opt);
+      });
+    } catch { Toast.error('Failed to load hospitals'); }
+  }
+
+  async function addDoctor() {
+    const btn = document.getElementById('add-btn');
+    const name = document.getElementById('doctor-name').value.trim();
+    const specialization = document.getElementById('specialization').value.trim();
+    const experience = document.getElementById('experience').value;
+    const hospitalId = document.getElementById('hospital-id').value;
+    const qualification = document.getElementById('qualification').value.trim();
+    const schedule = document.getElementById('schedule').value.trim();
+    const fee = document.getElementById('fee').value;
+    const bio = document.getElementById('bio').value.trim();
+    const availability = document.getElementById('availability').checked;
+
+    UI.hideError('error-msg');
+    document.getElementById('success-msg').classList.add('hidden');
+    if (!name || !specialization || !experience || !hospitalId) {
+      UI.showError('error-msg', 'Name, specialization, experience, and hospital are required'); return;
+    }
+    UI.setLoading(btn, true, ' Adding...');
+    try {
+      const res = await Api.addDoctor({ doctor_name: name, specialization, experience: parseInt(experience), hospital_id: hospitalId, qualification, schedule, consultation_fee: fee ? parseFloat(fee) : 0, bio, availability });
+      document.getElementById('success-msg').innerHTML = `<div class="alert alert-success">✓ Dr. ${res.doctor.doctor_name} added successfully!</div>`;
+      document.getElementById('success-msg').classList.remove('hidden');
+      ['doctor-name','specialization','experience','qualification','bio','fee'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('hospital-id').value = '';
+      document.getElementById('schedule').value = 'Mon-Sat 9AM-5PM';
+      document.getElementById('availability').checked = true;
+      loadDoctors();
+    } catch (err) { UI.showError('error-msg', err.message || 'Failed to add doctor');
+    } finally { UI.setLoading(btn, false, '👨‍⚕️ Add Doctor'); }
+  }
+
+  async function loadDoctors() {
+    const container = document.getElementById('doctors-table');
+    try {
+      const res = await Api.getDoctors({ limit: 20 });
+      if (!res.doctors.length) { container.innerHTML = '<p class="text-muted" style="padding:16px">No doctors registered</p>'; return; }
+      container.innerHTML = `
+        <table>
+          <thead><tr><th>Name</th><th>Specialization</th><th>Hospital</th><th>Exp</th><th>Avail.</th><th>Action</th></tr></thead>
+          <tbody>
+            ${res.doctors.map(d => `
+              <tr>
+                <td><strong>Dr. ${d.doctor_name}</strong></td>
+                <td>${d.specialization}</td>
+                <td>${d.hospital_name}</td>
+                <td>${d.experience} yrs</td>
+                <td><span class="availability-pill ${d.availability ? 'available' : 'unavailable'}">${d.availability ? 'Yes' : 'No'}</span></td>
+                <td style="display:flex;gap:6px">
+                  <button class="btn btn-sm btn-secondary" onclick="toggleAvail('${d.id}',${!d.availability})">${d.availability ? '🔴 Set Unavail.' : '🟢 Set Avail.'}</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteDoc('${d.id}','${d.doctor_name}')">🗑</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch { container.innerHTML = '<p class="text-muted" style="padding:16px">Failed to load</p>'; }
+  }
+
+  async function toggleAvail(id, avail) {
+    try {
+      await Api.updateDoctor(id, { availability: avail });
+      Toast.success(`Doctor availability updated`);
+      loadDoctors();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  async function deleteDoc(id, name) {
+    if (!confirm(`Remove Dr. ${name}?`)) return;
+    try {
+      await Api.deleteDoctor(id);
+      Toast.success('Doctor removed');
+      loadDoctors();
+    } catch (err) { Toast.error(err.message); }
+  }
+
+  loadHospitals();
+  loadDoctors();
+</script>
+</body>
+</html>

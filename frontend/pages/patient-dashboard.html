@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patient Dashboard — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="margin-bottom:28px">
+      <h2 id="greeting">Good morning! 👋</h2>
+      <p>Here's an overview of your health activities.</p>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="grid-4" style="margin-bottom:32px">
+      <div class="stat-card">
+        <div class="stat-icon teal">🏥</div>
+        <div><div class="stat-value" id="stat-hospitals">—</div><div class="stat-label">Hospitals Nearby</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon blue">👨‍⚕️</div>
+        <div><div class="stat-value" id="stat-doctors">—</div><div class="stat-label">Available Doctors</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon orange">📅</div>
+        <div><div class="stat-value" id="stat-appointments">—</div><div class="stat-label">My Appointments</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon red">🩸</div>
+        <div><div class="stat-value" id="stat-donors">—</div><div class="stat-label">Blood Donors</div></div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="margin-bottom:32px">
+      <h3 style="margin-bottom:16px">Quick Actions</h3>
+      <div class="grid-3">
+        <a href="hospitals.html" class="card" style="padding:24px;text-align:center;text-decoration:none;cursor:pointer">
+          <div style="font-size:40px;margin-bottom:12px">🏥</div>
+          <h4>Find Hospitals</h4>
+          <p class="text-sm text-muted mt-1">Search by location, speciality</p>
+        </a>
+        <a href="appointment-booking.html" class="card" style="padding:24px;text-align:center;text-decoration:none;cursor:pointer">
+          <div style="font-size:40px;margin-bottom:12px">📅</div>
+          <h4>Book Appointment</h4>
+          <p class="text-sm text-muted mt-1">Schedule an OP visit</p>
+        </a>
+        <a href="blood-donation.html" class="card" style="padding:24px;text-align:center;text-decoration:none;cursor:pointer">
+          <div style="font-size:40px;margin-bottom:12px">🩸</div>
+          <h4>Blood Donation</h4>
+          <p class="text-sm text-muted mt-1">Register or find donors</p>
+        </a>
+      </div>
+    </div>
+
+    <!-- Recent Appointments -->
+    <div class="card">
+      <div class="card-header">
+        <h3 style="font-size:1.1rem">Recent Appointments</h3>
+        <a href="appointment-booking.html" class="btn btn-sm btn-outline-primary">+ New Booking</a>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div id="appointments-list">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  Auth.requireAuth();
+  const user = Auth.getUser();
+
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('🏠 Dashboard');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Dashboard', 'patient');
+
+  // Greeting
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('greeting').textContent = `${greet}, ${user.name}! 👋`;
+
+  async function loadDashboard() {
+    try {
+      const [hospitals, doctors, appointments, donors] = await Promise.allSettled([
+        Api.getHospitals({ limit: 1 }),
+        Api.getDoctors({ availability: 'true', limit: 1 }),
+        Api.getAppointments({ limit: 5 }),
+        Api.getDonors({ limit: 1 }),
+      ]);
+      if (hospitals.status === 'fulfilled') document.getElementById('stat-hospitals').textContent = hospitals.value.total || 0;
+      if (doctors.status === 'fulfilled') document.getElementById('stat-doctors').textContent = doctors.value.total || 0;
+      if (appointments.status === 'fulfilled') {
+        document.getElementById('stat-appointments').textContent = appointments.value.total || 0;
+        renderAppointments(appointments.value.appointments || []);
+      }
+      if (donors.status === 'fulfilled') document.getElementById('stat-donors').textContent = donors.value.total || 0;
+    } catch (err) { Toast.error('Failed to load dashboard data'); }
+  }
+
+  function renderAppointments(appointments) {
+    const container = document.getElementById('appointments-list');
+    if (!appointments.length) {
+      container.innerHTML = `<div class="empty-state"><div class="icon">📅</div><h3>No appointments yet</h3><p>Book your first appointment with a doctor</p><a href="appointment-booking.html" class="btn btn-primary mt-2">Book Appointment</a></div>`;
+      return;
+    }
+    container.innerHTML = `
+      <div class="table-container">
+        <table>
+          <thead><tr><th>Doctor</th><th>Hospital</th><th>Date & Time</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>
+            ${appointments.map(a => `
+              <tr>
+                <td><strong>Dr. ${a.doctor_name}</strong><br><span class="text-sm text-muted">${a.specialization}</span></td>
+                <td>${a.hospital_name}</td>
+                <td>${UI.formatDate(a.date)}<br><span class="text-sm text-muted">${a.time}</span></td>
+                <td>${UI.getStatusBadge(a.status)}</td>
+                <td>${a.status === 'pending' ? `<button class="btn btn-sm btn-danger" onclick="cancelAppointment('${a.id}')">Cancel</button>` : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  async function cancelAppointment(id) {
+    if (!confirm('Cancel this appointment?')) return;
+    try {
+      await Api.updateAppointmentStatus(id, 'cancelled');
+      Toast.success('Appointment cancelled');
+      loadDashboard();
+    } catch (err) { Toast.error(err.message || 'Failed to cancel'); }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

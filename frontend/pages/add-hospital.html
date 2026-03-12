@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Hospital — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="max-width:700px">
+      <h2>Add New Hospital</h2>
+      <p style="margin-bottom:28px">Register a new hospital to the platform</p>
+
+      <div class="card">
+        <div class="card-header"><h3 style="font-size:1.1rem">Hospital Information</h3></div>
+        <div class="card-body">
+          <div id="error-msg" class="hidden" style="margin-bottom:16px"></div>
+          <div id="success-msg" class="hidden" style="margin-bottom:16px"></div>
+
+          <div class="form-group">
+            <label class="form-label">Hospital Name *</label>
+            <input type="text" id="hospital-name" class="form-control" placeholder="e.g. Apollo Hospitals" required>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">City / Location *</label>
+              <input type="text" id="location" class="form-control" placeholder="e.g. Chennai" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Total Beds *</label>
+              <input type="number" id="total-beds" class="form-control" placeholder="500" min="1" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Full Address *</label>
+            <input type="text" id="address" class="form-control" placeholder="21 Park Road, Nungambakkam, Chennai - 600034" required>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Phone Number</label>
+              <input type="tel" id="phone" class="form-control" placeholder="+91 44 2345 6789">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" id="email" class="form-control" placeholder="info@hospital.com">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Rating (1-5)</label>
+            <input type="number" id="rating" class="form-control" placeholder="4.2" min="1" max="5" step="0.1" value="4.0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Specialties (comma-separated)</label>
+            <input type="text" id="specialties" class="form-control" placeholder="Cardiology, Neurology, Orthopedics, Oncology">
+            <p class="form-hint">Enter department names separated by commas</p>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="emergency" style="width:16px;height:16px">
+            <label for="emergency" style="font-size:14px;cursor:pointer;font-weight:500">🚨 Emergency Services Available 24/7</label>
+          </div>
+
+          <div style="display:flex;gap:12px;margin-top:8px">
+            <button id="add-btn" class="btn btn-primary btn-lg" onclick="addHospital()" style="flex:1">🏥 Add Hospital</button>
+            <a href="admin-dashboard.html" class="btn btn-secondary btn-lg">Cancel</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recently Added -->
+      <div class="card" style="margin-top:32px">
+        <div class="card-header"><h3 style="font-size:1.1rem">Recently Added Hospitals</h3></div>
+        <div class="card-body" style="padding:0">
+          <div id="recent-hospitals"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  Auth.requireAdmin();
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('🏥 Add Hospital');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Add Hospital', 'admin');
+
+  async function addHospital() {
+    const btn = document.getElementById('add-btn');
+    const name = document.getElementById('hospital-name').value.trim();
+    const location = document.getElementById('location').value.trim();
+    const totalBeds = document.getElementById('total-beds').value;
+    const address = document.getElementById('address').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const rating = parseFloat(document.getElementById('rating').value) || 4.0;
+    const specialtiesRaw = document.getElementById('specialties').value;
+    const specialties = specialtiesRaw ? specialtiesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const emergency = document.getElementById('emergency').checked;
+
+    UI.hideError('error-msg');
+    document.getElementById('success-msg').classList.add('hidden');
+    if (!name || !location || !address || !totalBeds) {
+      UI.showError('error-msg', 'Hospital name, location, address, and total beds are required'); return;
+    }
+    UI.setLoading(btn, true, ' Adding...');
+    try {
+      const res = await Api.addHospital({ hospital_name: name, location, address, total_beds: parseInt(totalBeds), phone, email, rating, specialties, emergency_available: emergency });
+      document.getElementById('success-msg').innerHTML = `<div class="alert alert-success">✓ "${res.hospital.hospital_name}" added successfully!</div>`;
+      document.getElementById('success-msg').classList.remove('hidden');
+      // Reset form
+      ['hospital-name','location','total-beds','address','phone','email','specialties'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('rating').value = '4.0';
+      document.getElementById('emergency').checked = false;
+      loadRecent();
+    } catch (err) { UI.showError('error-msg', err.message || 'Failed to add hospital');
+    } finally { UI.setLoading(btn, false, '🏥 Add Hospital'); }
+  }
+
+  async function loadRecent() {
+    const container = document.getElementById('recent-hospitals');
+    try {
+      const res = await Api.getHospitals({ limit: 5 });
+      if (!res.hospitals.length) { container.innerHTML = '<p class="text-muted" style="padding:16px">No hospitals yet</p>'; return; }
+      container.innerHTML = `
+        <table>
+          <thead><tr><th>Name</th><th>Location</th><th>Beds</th><th>Emergency</th></tr></thead>
+          <tbody>
+            ${res.hospitals.map(h => `
+              <tr>
+                <td><strong>${h.hospital_name}</strong></td>
+                <td>${h.location_display || h.location}</td>
+                <td>${h.total_beds}</td>
+                <td>${h.emergency_available ? '✅' : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch { container.innerHTML = '<p class="text-muted" style="padding:16px">Failed to load</p>'; }
+  }
+
+  loadRecent();
+</script>
+</body>
+</html>

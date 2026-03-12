@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blood Donation — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="margin-bottom:32px">
+      <h2>🩸 Blood Donation</h2>
+      <p>Register as a blood donor or find donors in your area</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:40px" id="top-grid">
+      <!-- Register Donor Card -->
+      <div class="card">
+        <div class="card-header" style="background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;border-radius:20px 20px 0 0">
+          <h3 style="color:white;font-size:1.1rem">Register as Donor</h3>
+        </div>
+        <div class="card-body">
+          <div id="donor-error" class="hidden" style="margin-bottom:14px"></div>
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" id="donor-name" class="form-control" placeholder="Your full name" required>
+          </div>
+          <div class="grid-2" style="gap:12px">
+            <div class="form-group">
+              <label class="form-label">Blood Group</label>
+              <select id="donor-blood" class="form-control" required>
+                <option value="">Select</option>
+                <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+                <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Age</label>
+              <input type="number" id="donor-age" class="form-control" placeholder="18-65" min="18" max="65">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location / City</label>
+            <input type="text" id="donor-location" class="form-control" placeholder="e.g. Chennai, Tamil Nadu" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone Number</label>
+            <input type="tel" id="donor-phone" class="form-control" placeholder="+91 9876543210" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last Donation Date (optional)</label>
+            <input type="date" id="donor-last" class="form-control">
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="donor-avail" checked style="width:16px;height:16px">
+            <label for="donor-avail" style="font-size:14px;cursor:pointer">I am currently available to donate</label>
+          </div>
+          <button id="register-btn" class="btn btn-danger btn-lg w-full" onclick="registerDonor()">🩸 Register as Donor</button>
+        </div>
+      </div>
+
+      <!-- Search Donors Card -->
+      <div class="card">
+        <div class="card-header" style="background:linear-gradient(135deg,var(--secondary),var(--primary));color:white;border-radius:20px 20px 0 0">
+          <h3 style="color:white;font-size:1.1rem">Find Blood Donors</h3>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Blood Group Needed</label>
+            <select id="search-blood" class="form-control">
+              <option value="">Any blood group</option>
+              <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+              <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location</label>
+            <input type="text" id="search-location" class="form-control" placeholder="City or area...">
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="search-avail" checked style="width:16px;height:16px">
+            <label for="search-avail" style="font-size:14px;cursor:pointer">Available donors only</label>
+          </div>
+          <button class="btn btn-primary btn-lg w-full" onclick="searchDonors()">🔍 Search Donors</button>
+          <div style="margin-top:20px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <span style="font-size:12px;color:var(--gray-400)">Quick:</span>
+              ${['A+','B+','O+','AB+','O-'].map(bg => `<button class="btn btn-sm btn-secondary" onclick="quickSearch('${bg}')">${bg}</button>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="search-results">
+      <h3 style="margin-bottom:16px">All Registered Donors</h3>
+      <div id="donors-grid" class="grid-3">
+        <div style="grid-column:1/-1;text-align:center"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  const user = Auth.getUser();
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('🩸 Blood Donation');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Blood Donation', user?.role || 'patient');
+
+  if (!Auth.isLoggedIn()) {
+    document.getElementById('register-btn').textContent = '🔒 Login to Register';
+    document.getElementById('register-btn').onclick = () => window.location.href = 'login.html';
+  }
+
+  async function registerDonor() {
+    if (!Auth.isLoggedIn()) { window.location.href = 'login.html'; return; }
+    const btn = document.getElementById('register-btn');
+    const name = document.getElementById('donor-name').value.trim();
+    const blood_group = document.getElementById('donor-blood').value;
+    const age = document.getElementById('donor-age').value;
+    const location = document.getElementById('donor-location').value.trim();
+    const phone = document.getElementById('donor-phone').value.trim();
+    const last_donated = document.getElementById('donor-last').value;
+    const availability = document.getElementById('donor-avail').checked;
+
+    UI.hideError('donor-error');
+    if (!name || !blood_group || !location || !phone) {
+      UI.showError('donor-error', 'Please fill all required fields'); return;
+    }
+    UI.setLoading(btn, true, ' Registering...');
+    try {
+      await Api.registerDonor({ name, blood_group, age: age || null, location, phone, last_donated, availability });
+      Toast.success('You are now registered as a blood donor! 🩸');
+      document.getElementById('donor-name').value = '';
+      document.getElementById('donor-blood').value = '';
+      document.getElementById('donor-age').value = '';
+      document.getElementById('donor-location').value = '';
+      document.getElementById('donor-phone').value = '';
+      searchDonors();
+    } catch (err) {
+      UI.showError('donor-error', err.message || 'Registration failed');
+    } finally { UI.setLoading(btn, false, '🩸 Register as Donor'); }
+  }
+
+  function quickSearch(bg) {
+    document.getElementById('search-blood').value = bg;
+    searchDonors();
+  }
+
+  async function searchDonors() {
+    const blood_group = document.getElementById('search-blood').value;
+    const location = document.getElementById('search-location').value.trim();
+    const availability = document.getElementById('search-avail').checked;
+    const grid = document.getElementById('donors-grid');
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center"><div class="spinner"></div></div>';
+
+    const h3 = document.querySelector('#search-results h3');
+    h3.textContent = blood_group || location ? `Donors: ${blood_group || 'Any'} in ${location || 'All locations'}` : 'All Registered Donors';
+
+    try {
+      const params = {};
+      if (blood_group) params.blood_group = blood_group;
+      if (location) params.location = location;
+      if (availability) params.availability = 'true';
+      const res = await Api.getDonors(params);
+
+      if (!res.donors.length) {
+        grid.innerHTML = `<div style="grid-column:1/-1"><div class="empty-state"><div class="icon">🩸</div><h3>No donors found</h3><p>Try a different blood group or location</p></div></div>`;
+        return;
+      }
+      grid.innerHTML = res.donors.map(d => `
+        <div class="card" style="padding:20px">
+          <div style="display:flex;gap:14px;align-items:flex-start">
+            <div class="blood-type-badge">${d.blood_group}</div>
+            <div style="flex:1;min-width:0">
+              <h4 style="margin-bottom:4px">${d.name}</h4>
+              <p class="text-sm text-muted">📍 ${d.location}</p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                ${d.age ? `<span class="meta-tag">👤 ${d.age} yrs</span>` : ''}
+                ${d.last_donated ? `<span class="meta-tag">🗓 Last: ${UI.formatDate(d.last_donated)}</span>` : ''}
+                <span class="availability-pill ${d.availability ? 'available' : 'unavailable'}">${d.availability ? 'Available' : 'Unavailable'}</span>
+              </div>
+              ${d.availability ? `<a href="tel:${d.phone}" class="btn btn-sm btn-outline-primary" style="margin-top:10px">📞 Contact</a>` : ''}
+            </div>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      grid.innerHTML = `<div style="grid-column:1/-1"><div class="alert alert-danger">Failed to load donors</div></div>`;
+    }
+  }
+
+  // Mobile: stack top grid
+  if (window.innerWidth < 768) {
+    document.getElementById('top-grid').style.gridTemplateColumns = '1fr';
+  }
+
+  searchDonors();
+</script>
+</body>
+</html>

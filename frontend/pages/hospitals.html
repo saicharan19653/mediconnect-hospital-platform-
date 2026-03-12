@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hospitals — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+
+<!-- Page Header with Search -->
+<div class="page-header">
+  <div class="container">
+    <h1>Find Hospitals</h1>
+    <p>Search hospitals by location and check real-time crowd status</p>
+    <div class="search-bar">
+      <span style="padding:10px 16px;color:var(--gray-400);font-size:20px">🔍</span>
+      <input type="text" id="search-input" class="form-control" placeholder="Search by city, hospital name, or address...">
+      <button class="btn btn-primary" onclick="searchHospitals()">Search</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detail-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <h3 id="modal-title">Hospital Details</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="spinner"></div>
+    </div>
+  </div>
+</div>
+
+<div style="padding:32px 0">
+  <div class="container">
+    <!-- Filter Row -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div id="results-count" style="color:var(--gray-500);font-size:14px">Loading...</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:13px;color:var(--gray-500)">Filter:</label>
+        <select id="filter-emergency" class="form-control" style="width:auto;padding:6px 28px 6px 10px;font-size:13px" onchange="searchHospitals()">
+          <option value="">All Hospitals</option>
+          <option value="true">Emergency Available</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Hospital Grid -->
+    <div class="grid-3" id="hospitals-grid">
+      ${[1,2,3,4,5,6].map(() => `<div class="card"><div style="height:180px" class="skeleton"></div><div class="card-body"><div class="skeleton" style="height:20px;margin-bottom:8px"></div><div class="skeleton" style="height:14px;width:60%"></div></div></div>`).join('')}
+    </div>
+
+    <div id="pagination" class="pagination" style="margin-top:32px"></div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  const user = Auth.getUser();
+  const isAdmin = user?.role === 'admin';
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('🏥 Hospitals');
+
+  let currentPage = 0;
+  const limit = 9;
+  let totalHospitals = 0;
+
+  // Check for ?id= to open hospital detail
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('id')) {
+    openHospitalDetail(urlParams.get('id'));
+  }
+
+  async function searchHospitals(page = 0) {
+    currentPage = page;
+    const search = document.getElementById('search-input').value.trim();
+    const emergency = document.getElementById('filter-emergency').value;
+    const grid = document.getElementById('hospitals-grid');
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center"><div class="spinner"></div></div>`;
+    try {
+      const params = { limit, skip: page * limit };
+      if (search) params.search = search;
+      const res = await Api.getHospitals(params);
+      let hospitals = res.hospitals;
+      if (emergency === 'true') hospitals = hospitals.filter(h => h.emergency_available);
+      totalHospitals = res.total;
+      document.getElementById('results-count').textContent = `${res.total} hospital${res.total !== 1 ? 's' : ''} found`;
+
+      if (!hospitals.length) {
+        grid.innerHTML = `<div style="grid-column:1/-1"><div class="empty-state"><div class="icon">🏥</div><h3>No hospitals found</h3><p>Try a different search term or location</p></div></div>`;
+        return;
+      }
+
+      grid.innerHTML = hospitals.map(h => {
+        const card = renderHospitalCard(h);
+        return card.replace('onclick="window.location.href', `onclick="openHospitalDetail('${h.id}');//`);
+      }).join('');
+
+      // Pagination
+      const pages = Math.ceil(res.total / limit);
+      const pag = document.getElementById('pagination');
+      if (pages > 1) {
+        pag.innerHTML = Array.from({length: pages}, (_, i) =>
+          `<button class="page-btn ${i === page ? 'active' : ''}" onclick="searchHospitals(${i})">${i + 1}</button>`
+        ).join('');
+      } else pag.innerHTML = '';
+    } catch (err) {
+      grid.innerHTML = `<div style="grid-column:1/-1"><div class="alert alert-danger">Failed to load hospitals: ${err.message}</div></div>`;
+    }
+  }
+
+  async function openHospitalDetail(id) {
+    document.getElementById('detail-modal').classList.remove('hidden');
+    document.getElementById('modal-body').innerHTML = '<div class="spinner"></div>';
+    try {
+      const res = await Api.getHospital(id);
+      const h = res.hospital;
+      document.getElementById('modal-title').textContent = h.hospital_name;
+      const occupancy = h.crowd_data?.occupancy_percent || 0;
+      const barClass = occupancy < 50 ? 'low' : occupancy < 80 ? 'medium' : 'high';
+      document.getElementById('modal-body').innerHTML = `
+        <div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+            <span class="meta-tag">📍 ${h.address}</span>
+            <span class="meta-tag">🛏 ${h.total_beds} beds</span>
+            ${h.emergency_available ? '<span class="meta-tag red">🚨 Emergency</span>' : ''}
+            ${h.phone ? `<span class="meta-tag">📞 ${h.phone}</span>` : ''}
+            ${h.rating ? `<span class="meta-tag">⭐ ${h.rating.toFixed(1)}</span>` : ''}
+          </div>
+
+          <div class="crowd-monitor" style="margin-bottom:20px">
+            <h4>🔴 Live Crowd Monitoring</h4>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:12px">
+              <div class="crowd-stat"><div class="value">${h.crowd_data?.current_waiting || 0}</div><div class="label">Waiting Patients</div></div>
+              <div class="crowd-stat"><div class="value">${h.crowd_data?.estimated_wait_minutes || 0}m</div><div class="label">Est. Wait Time</div></div>
+              <div class="crowd-stat"><div class="value">${occupancy}%</div><div class="label">Bed Occupancy</div></div>
+            </div>
+            <div class="crowd-bar"><div class="crowd-bar-fill ${barClass}" style="width:${occupancy}%"></div></div>
+            <p style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:6px">Last updated: ${UI.formatDateTime(new Date().toISOString())}</p>
+          </div>
+
+          ${h.specialties?.length ? `
+            <div style="margin-bottom:20px">
+              <h4 style="margin-bottom:10px">Specialties</h4>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">${h.specialties.map(s => `<span class="meta-tag">${s}</span>`).join('')}</div>
+            </div>` : ''}
+
+          <div>
+            <h4 style="margin-bottom:14px">Available Doctors (${h.doctors?.length || 0})</h4>
+            ${h.doctors?.length ? h.doctors.map(d => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);margin-bottom:8px">
+                <div>
+                  <strong>Dr. ${d.doctor_name}</strong>
+                  <span style="font-size:13px;color:var(--primary);margin-left:8px">${d.specialization}</span>
+                  <div style="font-size:12px;color:var(--gray-400);margin-top:2px">📅 ${d.schedule} · 🏅 ${d.experience} yrs</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="availability-pill ${d.availability ? 'available' : 'unavailable'}">${d.availability ? 'Available' : 'Unavailable'}</span>
+                  ${d.availability ? `<a href="appointment-booking.html?doctor_id=${d.id}&hospital_id=${h.id}" class="btn btn-sm btn-primary">Book</a>` : ''}
+                </div>
+              </div>`).join('') : '<p class="text-muted">No doctors registered for this hospital yet.</p>'}
+          </div>
+        </div>`;
+    } catch (err) {
+      document.getElementById('modal-body').innerHTML = `<div class="alert alert-danger">Failed to load hospital details</div>`;
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('detail-modal').classList.add('hidden');
+    // Remove ?id= from URL
+    const url = new URL(window.location);
+    url.searchParams.delete('id');
+    window.history.replaceState({}, '', url);
+  }
+
+  // Search on Enter
+  document.getElementById('search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') searchHospitals();
+  });
+
+  // Debounced search
+  document.getElementById('search-input').addEventListener('input', UI.debounce(() => searchHospitals(), 400));
+
+  searchHospitals();
+</script>
+</body>
+</html>

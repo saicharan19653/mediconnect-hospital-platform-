@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Appointment — MediConnect</title>
+<link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div id="navbar-root"></div>
+<div class="dashboard-layout">
+  <div id="sidebar-root"></div>
+  <main class="main-content page-fade">
+    <div style="max-width:700px">
+      <h2>Book an Appointment</h2>
+      <p style="margin-bottom:32px">Schedule your outpatient visit with a specialist</p>
+
+      <!-- Doctor/Hospital info card (shown after selection) -->
+      <div id="selected-info" class="card hidden" style="margin-bottom:24px;padding:20px">
+        <div style="display:flex;gap:14px;align-items:flex-start">
+          <div class="doctor-avatar">👨‍⚕️</div>
+          <div>
+            <h4 id="selected-doctor-name">—</h4>
+            <p id="selected-doctor-spec" style="color:var(--primary);font-size:13px;font-weight:600"></p>
+            <p id="selected-hospital-name" style="color:var(--gray-500);font-size:13px"></p>
+            <p id="selected-schedule" style="color:var(--gray-400);font-size:12px;margin-top:4px"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 style="font-size:1.1rem">Appointment Details</h3>
+        </div>
+        <div class="card-body">
+          <div id="error-msg" class="hidden" style="margin-bottom:16px"></div>
+
+          <div class="form-group">
+            <label class="form-label">Select Hospital</label>
+            <select id="hospital-select" class="form-control" onchange="loadDoctorsForHospital()" required>
+              <option value="">— Choose a hospital —</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Select Doctor</label>
+            <select id="doctor-select" class="form-control" onchange="onDoctorSelect()" required disabled>
+              <option value="">— Select hospital first —</option>
+            </select>
+          </div>
+
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Preferred Date</label>
+              <input type="date" id="appt-date" class="form-control" required min="">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Preferred Time</label>
+              <select id="appt-time" class="form-control" required>
+                <option value="">— Select time —</option>
+                <option value="09:00 AM">09:00 AM</option>
+                <option value="09:30 AM">09:30 AM</option>
+                <option value="10:00 AM">10:00 AM</option>
+                <option value="10:30 AM">10:30 AM</option>
+                <option value="11:00 AM">11:00 AM</option>
+                <option value="11:30 AM">11:30 AM</option>
+                <option value="12:00 PM">12:00 PM</option>
+                <option value="02:00 PM">02:00 PM</option>
+                <option value="02:30 PM">02:30 PM</option>
+                <option value="03:00 PM">03:00 PM</option>
+                <option value="03:30 PM">03:30 PM</option>
+                <option value="04:00 PM">04:00 PM</option>
+                <option value="04:30 PM">04:30 PM</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Reason / Notes (optional)</label>
+            <textarea id="appt-notes" class="form-control" placeholder="Describe your symptoms or reason for visit..." rows="3"></textarea>
+          </div>
+
+          <button id="book-btn" class="btn btn-primary btn-lg w-full" onclick="bookAppointment()">
+            📅 Confirm Appointment
+          </button>
+        </div>
+      </div>
+
+      <!-- My Appointments -->
+      <div class="card" style="margin-top:32px">
+        <div class="card-header"><h3 style="font-size:1.1rem">My Appointments</h3></div>
+        <div class="card-body" style="padding:0">
+          <div id="my-appointments"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  Auth.requireAuth();
+  document.getElementById('navbar-root').innerHTML = UI.renderNavbar('📅 Book Appointment');
+  document.getElementById('sidebar-root').innerHTML = UI.renderSidebar('Book Appointment', 'patient');
+
+  // Set min date to today
+  document.getElementById('appt-date').min = new Date().toISOString().split('T')[0];
+
+  // Pre-fill from URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const preDocId = urlParams.get('doctor_id');
+  const preHospId = urlParams.get('hospital_id');
+
+  async function loadHospitals() {
+    try {
+      const res = await Api.getHospitals({ limit: 100 });
+      const sel = document.getElementById('hospital-select');
+      res.hospitals.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h.id; opt.textContent = h.hospital_name;
+        sel.appendChild(opt);
+      });
+      if (preHospId) { sel.value = preHospId; await loadDoctorsForHospital(); }
+    } catch (err) { Toast.error('Failed to load hospitals'); }
+  }
+
+  async function loadDoctorsForHospital() {
+    const hospitalId = document.getElementById('hospital-select').value;
+    const docSel = document.getElementById('doctor-select');
+    if (!hospitalId) { docSel.disabled = true; docSel.innerHTML = '<option>— Select hospital first —</option>'; return; }
+    docSel.disabled = true;
+    docSel.innerHTML = '<option>Loading doctors...</option>';
+    try {
+      const res = await Api.getDoctors({ hospital_id: hospitalId, availability: 'true' });
+      docSel.innerHTML = '<option value="">— Choose a doctor —</option>';
+      res.doctors.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = `Dr. ${d.doctor_name} — ${d.specialization}`;
+        opt.dataset.doc = JSON.stringify(d);
+        docSel.appendChild(opt);
+      });
+      docSel.disabled = false;
+      if (preDocId) { docSel.value = preDocId; onDoctorSelect(); }
+    } catch { docSel.innerHTML = '<option>Failed to load doctors</option>'; }
+  }
+
+  function onDoctorSelect() {
+    const sel = document.getElementById('doctor-select');
+    const selected = sel.options[sel.selectedIndex];
+    const infoCard = document.getElementById('selected-info');
+    if (!selected?.dataset?.doc) { infoCard.classList.add('hidden'); return; }
+    const d = JSON.parse(selected.dataset.doc);
+    document.getElementById('selected-doctor-name').textContent = `Dr. ${d.doctor_name}`;
+    document.getElementById('selected-doctor-spec').textContent = d.specialization;
+    document.getElementById('selected-hospital-name').textContent = `🏥 ${d.hospital_name}`;
+    document.getElementById('selected-schedule').textContent = `📅 ${d.schedule} · 🏅 ${d.experience} yrs exp · ${d.consultation_fee ? '💰 ₹' + d.consultation_fee : 'Free'}`;
+    infoCard.classList.remove('hidden');
+  }
+
+  async function bookAppointment() {
+    const btn = document.getElementById('book-btn');
+    const doctorId = document.getElementById('doctor-select').value;
+    const hospitalId = document.getElementById('hospital-select').value;
+    const date = document.getElementById('appt-date').value;
+    const time = document.getElementById('appt-time').value;
+    const notes = document.getElementById('appt-notes').value.trim();
+
+    UI.hideError('error-msg');
+    if (!doctorId || !hospitalId || !date || !time) {
+      UI.showError('error-msg', 'Please fill in all required fields'); return;
+    }
+    UI.setLoading(btn, true, ' Booking...');
+    try {
+      await Api.bookAppointment({ doctor_id: doctorId, hospital_id: hospitalId, date, time, notes });
+      Toast.success('Appointment booked successfully!');
+      document.getElementById('appt-date').value = '';
+      document.getElementById('appt-time').value = '';
+      document.getElementById('appt-notes').value = '';
+      loadMyAppointments();
+    } catch (err) {
+      UI.showError('error-msg', err.message || 'Booking failed. Please try again.');
+    } finally {
+      UI.setLoading(btn, false, '📅 Confirm Appointment');
+    }
+  }
+
+  async function loadMyAppointments() {
+    const container = document.getElementById('my-appointments');
+    try {
+      const res = await Api.getAppointments({ limit: 10 });
+      if (!res.appointments.length) {
+        container.innerHTML = `<div class="empty-state" style="padding:30px"><div class="icon" style="font-size:40px">📅</div><p>No appointments yet</p></div>`;
+        return;
+      }
+      container.innerHTML = `
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Doctor</th><th>Date</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              ${res.appointments.map(a => `
+                <tr>
+                  <td><strong>Dr. ${a.doctor_name}</strong><div class="text-sm text-muted">${a.specialization}</div></td>
+                  <td>${UI.formatDate(a.date)}</td>
+                  <td>${a.time}</td>
+                  <td>${UI.getStatusBadge(a.status)}</td>
+                  <td>${a.status === 'pending' ? `<button class="btn btn-sm btn-danger" onclick="cancel('${a.id}')">Cancel</button>` : '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch { container.innerHTML = '<div class="alert alert-danger" style="margin:16px">Failed to load appointments</div>'; }
+  }
+
+  async function cancel(id) {
+    if (!confirm('Cancel this appointment?')) return;
+    try {
+      await Api.updateAppointmentStatus(id, 'cancelled');
+      Toast.success('Appointment cancelled');
+      loadMyAppointments();
+    } catch (err) { Toast.error(err.message || 'Failed to cancel'); }
+  }
+
+  loadHospitals();
+  loadMyAppointments();
+</script>
+</body>
+</html>
